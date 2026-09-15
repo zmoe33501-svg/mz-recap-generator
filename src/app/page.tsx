@@ -1,16 +1,37 @@
 'use client';
 
-import { useState } from 'react';
-import { Film, Image as ImageIcon, FileText, Loader2, Copy, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Film, Image as ImageIcon, FileText, Loader2, Copy, CheckCircle2, Key } from 'lucide-react';
 
 export default function RecapGenerator() {
   const [movieTitle, setMovieTitle] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // App စပွင့်တာနဲ့ သိမ်းထားတဲ့ API Key ရှိရင် ပြန်ခေါ်မယ်
+  useEffect(() => {
+    const savedKey = localStorage.getItem('mz_gemini_api_key');
+    if (savedKey) setApiKey(savedKey);
+  }, []);
+
+  const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setApiKey(val);
+    localStorage.setItem('mz_gemini_api_key', val); // Key ကို သိမ်းထားမယ်
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg(null);
+    setResult(null);
+
+    if (!apiKey) {
+      setErrorMsg("ကျေးဇူးပြု၍ သင့်ရဲ့ Gemini API Key ကို ထည့်သွင်းပါ။");
+      return;
+    }
     if (!movieTitle) return;
     
     setLoading(true);
@@ -18,13 +39,18 @@ export default function RecapGenerator() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ movieTitle })
+        // API Key ကို Backend ဆီပါ ပို့ပေးမယ်
+        body: JSON.stringify({ movieTitle, apiKey }) 
       });
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "တစ်ခုခု မှားယွင်းနေပါသည်။ API Key မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။");
+      }
       setResult(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error:", error);
-      alert("တစ်ခုခု မှားယွင်းနေပါသည်။");
+      setErrorMsg(error.message);
     } finally {
       setLoading(false);
     }
@@ -42,18 +68,29 @@ export default function RecapGenerator() {
         
         {/* Header Section */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2 mb-4">
             <Film className="text-blue-600" />
-            MZ Studio: Script & Prompt Generator
+            MZ Studio: Script Generator
           </h1>
-          <p className="text-gray-500 mt-2">ဇာတ်ကားအမည် ထည့်သွင်းပြီး Script နှင့် Thumbnail Prompts များကို အလွယ်တကူ ရယူပါ။</p>
           
-          <form onSubmit={handleGenerate} className="mt-6 flex flex-col md:flex-row gap-3">
+          {/* API Key Input */}
+          <div className="flex items-center gap-3 mb-6 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+            <Key className="text-blue-500 w-5 h-5 flex-shrink-0" />
+            <input 
+              type="password" 
+              value={apiKey}
+              onChange={handleKeyChange}
+              placeholder="သင့်ရဲ့ Gemini API Key ကို ဤနေရာတွင် ထည့်ပါ..." 
+              className="flex-1 bg-transparent outline-none text-sm text-gray-700 placeholder-gray-400"
+            />
+          </div>
+          
+          <form onSubmit={handleGenerate} className="flex flex-col md:flex-row gap-3">
             <input 
               type="text" 
               value={movieTitle}
               onChange={(e) => setMovieTitle(e.target.value)}
-              placeholder="ဥပမာ - The Matrix (1999)" 
+              placeholder="ဇာတ်ကားအမည် ထည့်ပါ (ဥပမာ - The Matrix)" 
               className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
             <button 
@@ -64,14 +101,17 @@ export default function RecapGenerator() {
               {loading ? <Loader2 className="animate-spin" /> : 'Generate Now'}
             </button>
           </form>
+
+          {/* Error Message */}
+          {errorMsg && (
+            <p className="text-red-500 text-sm mt-4 text-center">{errorMsg}</p>
+          )}
         </div>
 
-        {/* Results Section */}
+        {/* Results Section (Same as before) */}
         {result && (
           <div className="space-y-4">
-            
-            {/* Titles */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                 <FileText size={20} className="text-green-500" /> Suggested Titles
               </h2>
@@ -82,24 +122,19 @@ export default function RecapGenerator() {
               </ul>
             </div>
 
-            {/* Script */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative group">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 group">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                   <FileText size={20} className="text-purple-500" /> Burmese Script
                 </h2>
-                <button 
-                  onClick={() => handleCopy(result.scriptBurmese, 'script')}
-                  className="text-gray-400 hover:text-blue-600 transition"
-                >
+                <button onClick={() => handleCopy(result.scriptBurmese, 'script')} className="text-gray-400 hover:text-blue-600">
                   {copiedSection === 'script' ? <CheckCircle2 size={20} className="text-green-500" /> : <Copy size={20} />}
                 </button>
               </div>
               <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{result.scriptBurmese}</p>
             </div>
 
-            {/* Thumbnail Prompts */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                 <ImageIcon size={20} className="text-orange-500" /> AI Thumbnail Prompts
               </h2>
@@ -107,17 +142,13 @@ export default function RecapGenerator() {
                 {result.thumbnailPrompts.map((prompt: string, i: number) => (
                   <div key={i} className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-600 relative pr-10">
                     {prompt}
-                    <button 
-                      onClick={() => handleCopy(prompt, `prompt-${i}`)}
-                      className="absolute right-3 top-3 text-gray-400 hover:text-blue-600"
-                    >
+                    <button onClick={() => handleCopy(prompt, `prompt-${i}`)} className="absolute right-3 top-3 text-gray-400 hover:text-blue-600">
                       {copiedSection === `prompt-${i}` ? <CheckCircle2 size={16} className="text-green-500" /> : <Copy size={16} />}
                     </button>
                   </div>
                 ))}
               </div>
             </div>
-
           </div>
         )}
       </div>
